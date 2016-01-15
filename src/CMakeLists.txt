@@ -191,6 +191,48 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 	set_source_files_properties(main.cpp PROPERTIES COMPILE_FLAGS "-Wno-error=missing-variable-declarations -Wno-error=missing-prototypes")
 endif()
 
+
+set(BINDING_OUTPUTS
+	${CMAKE_SOURCE_DIR}/src/Bindings/Bindings.cpp
+	${CMAKE_SOURCE_DIR}/src/Bindings/Bindings.h
+	${CMAKE_SOURCE_DIR}/src/Bindings/LuaState_Declaration.inc
+	${CMAKE_SOURCE_DIR}/src/Bindings/LuaState_Implementation.cpp
+	${CMAKE_SOURCE_DIR}/src/Bindings/LuaState_Typedefs.inc
+)
+
+if (MSVC)
+	add_custom_command(
+		OUTPUT ${BINDING_OUTPUTS}
+
+		# Copy the Lua DLL into the Bindings folder, so that tolua can run from there:
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/Server/lua51.dll ./lua51.dll
+
+		# Regenerate bindings:
+		COMMAND tolua -L BindingsProcessor.lua -o Bindings.cpp -H Bindings.h AllToLua.pkg
+		WORKING_DIRECTORY Bindings/
+
+		# add any new generation dependencies here
+		DEPENDS tolua
+	)
+else ()
+	add_custom_command(
+		OUTPUT ${BINDING_OUTPUTS}
+
+		# Regenerate bindings:
+		COMMAND tolua -L BindingsProcessor.lua -o Bindings.cpp -H Bindings.h AllToLua.pkg
+		WORKING_DIRECTORY Bindings/
+
+		# add any new generation dependencies here
+		DEPENDS tolua
+	)
+endif ()
+
+# TODO: our current method of using libraries to add subdirectory source files is nonoptimal
+# change it, and remove this custom target, using just the custom command above
+# this is currently needed as custom commands do not propagate their build rules to subdirectories.
+add_custom_target(BindingsGeneration DEPENDS ${BINDING_OUTPUTS})
+
+
 if (NOT MSVC)
 	# Bindings need to reference other folders, so they are done here instead
 	# lib dependencies are not included
@@ -199,8 +241,6 @@ if (NOT MSVC)
 	foreach(folder ${FOLDERS})
 		add_subdirectory(${folder})
 	endforeach(folder)
-
-	get_directory_property(BINDING_DEPENDENCIES DIRECTORY "Bindings" DEFINITION BINDING_DEPENDENCIES)
 
 	#clear file
 	file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/Bindings/BindingDependencies.txt)
@@ -307,32 +347,8 @@ FILE(WRITE "AllFiles.lst" "${ALLFILESLINES}")
 
 
 set(EXECUTABLE Cuberite)
-
-if (MSVC)
-	get_directory_property(BINDING_OUTPUTS DIRECTORY "Bindings" DEFINITION BINDING_OUTPUTS)
-	get_directory_property(BINDING_DEPENDENCIES DIRECTORY "Bindings" DEFINITION BINDING_DEPENDENCIES)
-
-	# The paths in BINDING_DEPENDENCIES are relative to the Bindings folder, convert them relative to this folder:
-	foreach (dep ${BINDING_DEPENDENCIES})
-		list (APPEND BINDINGS_DEPENDENCIES "Bindings/${dep}")
-	endforeach(dep)
-
-	ADD_CUSTOM_COMMAND(
-		OUTPUT ${BINDING_OUTPUTS}
-
-		# Copy the Lua DLL into the Bindings folder, so that tolua can run from there:
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/Server/lua51.dll ./lua51.dll
-
-		# Regenerate bindings:
-		COMMAND tolua -L BindingsProcessor.lua -o Bindings.cpp -H Bindings.h AllToLua.pkg
-		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Bindings/
-
-		# add any new generation dependencies here
-		DEPENDS ${BINDINGS_DEPENDENCIES}
-	)
-endif()
-
 add_executable(${EXECUTABLE} ${SOURCE})
+add_dependencies(${EXECUTABLE} BindingsGeneration)
 
 
 # Output the executable into the $/Server folder, so that it has access to external resources:
