@@ -14,7 +14,7 @@
 #include "../UI/MinecartWithChestWindow.h"
 
 #define NO_SPEED 0.0
-#define MAX_SPEED 8
+#define MAX_SPEED 75
 #define MAX_SPEED_NEGATIVE -MAX_SPEED
 
 
